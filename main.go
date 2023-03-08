@@ -66,8 +66,16 @@ func insert(x int){
 		return
 	}
 	var l, r = split(root, x)
-	var t = newNode(x)
-	root = merge(l, merge(t, r))
+	root = merge(l, merge(newNode(x), r))
+}
+
+func erase(x int){
+	if root == nil || find(root, x) == false{
+		return
+	}
+	var l, r = split(root, x)
+	l, _ = split(l, x-1)
+	root = merge(l, r)
 }
 
 func read(p *node){
