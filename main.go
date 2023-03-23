@@ -1,190 +1,96 @@
 package main
 
-import (
-	"fmt"
-	"html/template"
-	"math/rand"
-	"net/http"
-	"path"
-	"strconv"
-	"time"
-)
+import "fmt"
+import "math/rand"
 
-type user struct{
-	name string
-	login, password string
-	sid string
-	expiration time.Time
+type node struct{
+	k, p int
+	l, r *node
 }
 
-func newUser(name string, login string, password string) user{
-	var tmp user
-	tmp.name = name
-	tmp.login = login
-	tmp.password = password
+func newNode(x int) *node{
+	var tmp = new(node)
+	tmp.p = rand.Int()
+	tmp.k = x
 	return tmp
 }
 
-func getMessagesUpdate(r []string, from int) string{
-	var res = ""
-	for i := from; i < len(r); i++{
-		res+=r[i]
+func merge(l *node, r *node) *node{
+	if l == nil{
+		return r
 	}
-	return res
-}
-
-func resetCookie(w http.ResponseWriter){
-	http.SetCookie(w, &http.Cookie{Name: "name", Value: "", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "sid", Value: "", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "room", Value: "", MaxAge: -1})
-}
-
-func checkUser(r *http.Request) bool{
-	usr, errName := r.Cookie("name")
-	sid, errSid := r.Cookie("sid")
-	if errName != nil || errSid != nil || users[usr.Value].expiration.Before(time.Now()) || users[usr.Value].sid != sid.Value{
-		return false
+	if r == nil{
+		return l
+	}
+	if l.p > r.p{
+		l.r = merge(l.r, r)
+		return l
 	}else{
-		_, ok := users[usr.Value]
-		return ok
+		r.l = merge(l, r.l)
+		return r
 	}
 }
 
-func checkRoom(r *http.Request) bool{
-	if _, err := r.Cookie("room"); err == nil{
+func split(p *node, x int) (*node, *node){
+	if p == nil{
+		return nil, nil
+	}
+	if p.k <= x{
+		var l, r = split(p.r, x)
+		p.r = l
+		return p, r
+	}else{
+		var l, r = split(p.l, x)
+		p.l = r
+		return l, p
+	}
+}
+
+var root *node
+
+func find(p *node, x int) bool{
+	if p.k == x{
 		return true
-	}else{
-		return false
 	}
-}
-
-func redirectToIndex(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "http://" + url + ":" + port + "/", http.StatusSeeOther)
-}
-
-func index(w http.ResponseWriter, r *http.Request) {
-	if checkUser(r){
-		if checkRoom(r){
-			page, _ := template.ParseFiles(path.Join("templates", "room.html"))
-			page.Execute(w, "")
-		}else{
-			page, _ := template.ParseFiles(path.Join("templates", "enter_room.html"))
-			page.Execute(w, "")
-		}
-	}else{
-		resetCookie(w)
-		page, _ := template.ParseFiles(path.Join("templates", "login_reg.html"))
-		page.Execute(w, "")
+	if p.r != nil && p.k < x{
+		return find(p.r, x)
 	}
+	if p.l != nil && p.k > x{
+		return find(p.l, x)
+	}
+	return false
 }
 
-func reg(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		redirectToIndex(w, r)
+func insert(x int){
+	if root != nil && find(root, x) == true{
 		return
 	}
-	var name = r.FormValue("name")
-	var login = r.FormValue("login")
-	var password = r.FormValue("password")
-	_, okName := names[name]
-	_, okLogin := logins[login]
-	if name == "" || login == "" || password == "" || okName || okLogin{
-		redirectToIndex(w, r)
+	var l, r = split(root, x)
+	root = merge(l, merge(newNode(x), r))
+}
+
+func erase(x int){
+	if root == nil || find(root, x) == false{
 		return
 	}
-	users[name] = newUser(name, login, password)
-	names[name] = true
-	logins[login] = name
-	var usr = users[name]
-	usr.sid = strconv.Itoa(rand.Int())
-	usr.expiration = time.Now().Add(24 * time.Hour)
-	users[name] = usr
-	http.SetCookie(w, &http.Cookie{Name: "name", Value: name})
-	http.SetCookie(w, &http.Cookie{Name: "sid", Value: users[name].sid})
-	redirectToIndex(w, r)
+	var l, r = split(root, x)
+	l, _ = split(l, x-1)
+	root = merge(l, r)
 }
 
-func login(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		redirectToIndex(w, r)
-		return
+func read(p *node){
+	if p.l != nil{
+		read(p.l)
 	}
-	var login = r.FormValue("login")
-	var password = r.FormValue("password")
-	_, ok := logins[login]
-	if !ok{
-		redirectToIndex(w, r)
-		return
-	}
-	var name = logins[login]
-	var usr = users[name]
-	if usr.password != password{
-		redirectToIndex(w, r)
-		return
-	}
-	usr.sid = strconv.Itoa(rand.Int())
-	usr.expiration = time.Now().Add(24 * time.Hour)
-	users[name] = usr
-	http.SetCookie(w, &http.Cookie{Name: "name", Value: name})
-	http.SetCookie(w, &http.Cookie{Name: "sid", Value: users[name].sid})
-	redirectToIndex(w, r)
-}
-func logout(w http.ResponseWriter, r *http.Request) {
-	resetCookie(w)
-	redirectToIndex(w, r)
-}
-
-func enterRoom(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		return
-	}
-	var room = r.FormValue("room")
-	http.SetCookie(w, &http.Cookie{Name: "room", Value: room})
-	redirectToIndex(w, r)
-}
-
-func leaveRoom(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: "room", Value: "", MaxAge: -1})
-	redirectToIndex(w, r)
-}
-
-func post(w http.ResponseWriter, r *http.Request){
-	var cookieName, _ = r.Cookie("name")
-	var cookieRoom, _ = r.Cookie("room")
-	if checkUser(r) && checkRoom(r){
-		data[cookieRoom.Value]+=cookieName.Value + ": " + r.FormValue("text")+"<br>"
-	}
-	redirectToIndex(w, r)
-}
-
-func get(w http.ResponseWriter, r *http.Request){
-	var cookie, err = r.Cookie("room")
-	if err == nil{
-		fmt.Fprint(w, data[cookie.Value])
+	fmt.Println(p.k)
+	if p.r != nil{
+		read(p.r)
 	}
 }
-
-func getRoomsList(w http.ResponseWriter, r *http.Request){
-
-}
-
-var data = make(map[string]string)
-var users = make(map[string]user)
-
-var logins = make(map[string]string)
-var names = make(map[string]bool)
-
-var url = "127.0.0.1"
-var port = "8080"
 
 func main() {
-	http.HandleFunc("/", index)
-	http.HandleFunc("/reg", reg)
-	http.HandleFunc("/login", login)
-	http.HandleFunc("/logout", logout)
-	http.HandleFunc("/enter", enterRoom)
-	http.HandleFunc("/leave", leaveRoom)
-	http.HandleFunc("/post", post)
-	http.HandleFunc("/get", get)
-	http.ListenAndServe(":" + port, nil)
+	for i := 0; i < 10; i++{
+		insert(rand.Int()%100)
+	}
+	read(root)
 }
