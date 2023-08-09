@@ -3,26 +3,28 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 )
 
-type Item struct {
-	k int // k is the key of the item
+type Item interface {
+	getSize() int
+	getVal(n int) string
 }
 
-// newItem creates a new item with the given key
-func newItem(x int) Item {
-	var tmp Item
-	tmp.k = x
-	return tmp
+func _less(a Item, b Item) bool {
+	return a.getVal(b.getSize()) < b.getVal(a.getSize())
+}
+
+func _less_equal(a Item, b Item) bool {
+	return a.getVal(b.getSize()) <= b.getVal(a.getSize())
 }
 
 type Node struct {
-	i            Item // i is the item stored in the node
-	p            int  // p is the priority of the node
+	i            Item
+	p            int
 	l, r, parent *Node
 }
 
-// newNode creates a new node with the given item
 func newNode(x Item) *Node {
 	var tmp Node
 	tmp.p = rand.Int()
@@ -30,7 +32,6 @@ func newNode(x Item) *Node {
 	return &tmp
 }
 
-// next returns the next node in the treap
 func (p *Node) next() *Node {
 	if p.r != nil {
 		p = p.r
@@ -45,7 +46,6 @@ func (p *Node) next() *Node {
 	return p.parent
 }
 
-// prev returns the previous node in the treap
 func (p *Node) prev() *Node {
 	if p.l != nil {
 		p = p.l
@@ -60,7 +60,6 @@ func (p *Node) prev() *Node {
 	return p.parent
 }
 
-// _merge merges two nodes in the treap
 func _merge(l *Node, r *Node) *Node {
 	if l == nil {
 		return r
@@ -79,20 +78,19 @@ func _merge(l *Node, r *Node) *Node {
 	}
 }
 
-// _split splits the treap at the given key
-func _split(p *Node, x int) (*Node, *Node) {
+func _split(p *Node, x Item, cmp func(a Item, b Item) bool) (*Node, *Node) {
 	if p == nil {
 		return nil, nil
 	}
-	if p.i.k <= x {
-		var l, r = _split(p.r, x)
+	if cmp(p.i, x) {
+		var l, r = _split(p.r, x, cmp)
 		if l != nil {
 			l.parent = p
 		}
 		p.r = l
 		return p, r
 	} else {
-		var l, r = _split(p.l, x)
+		var l, r = _split(p.l, x, cmp)
 		if r != nil {
 			r.parent = p
 		}
@@ -101,22 +99,20 @@ func _split(p *Node, x int) (*Node, *Node) {
 	}
 }
 
-// _print prints the treap in order
 func _print(p *Node) {
 	if p.l != nil {
 		_print(p.l)
 	}
-	fmt.Println(p.i.k)
+	fmt.Println(p.i.getVal(p.i.getSize()))
 	if p.r != nil {
 		_print(p.r)
 	}
 }
 
 type Treap struct {
-	_root, _begin, _end *Node // _root is the root node of the treap, _begin is the node with the smallest key, _end is the node with the largest key
+	_root, _begin, _end *Node
 }
 
-// _updBegin updates the _begin node of the treap
 func (t *Treap) _updBegin() {
 	var p = t._root
 	for p.l != nil {
@@ -125,7 +121,6 @@ func (t *Treap) _updBegin() {
 	t._begin = p
 }
 
-// _updEnd updates the _end node of the treap
 func (t *Treap) _updEnd() {
 	var p = t._root
 	for p.r != nil {
@@ -134,25 +129,22 @@ func (t *Treap) _updEnd() {
 	t._end = p
 }
 
-// begin returns the node with the smallest key in the treap
 func (t *Treap) begin() *Node {
 	return t._begin
 }
 
-// end returns the node with the largest key in the treap
 func (t *Treap) end() *Node {
 	return t._end
 }
 
-// count returns the number of occurrences of the given item in the treap
 func (t *Treap) count(x Item) int {
 	var p = t._root
 	for p.i != x {
-		if p.r != nil && p.i.k < x.k {
+		if p.r != nil && p.i.getVal(x.getSize()) < x.getVal(p.i.getSize()) {
 			p = p.r
 			continue
 		}
-		if p.l != nil && x.k < p.i.k {
+		if p.l != nil && x.getVal(p.i.getSize()) < p.i.getVal(x.getSize()) {
 			p = p.l
 			continue
 		}
@@ -165,15 +157,14 @@ func (t *Treap) count(x Item) int {
 	}
 }
 
-// find returns the node containing the given item and a boolean indicating whether the item was found
 func (t *Treap) find(x Item) (*Node, bool) {
 	var p = t._root
 	for p.i != x {
-		if p.r != nil && p.i.k < x.k {
+		if p.r != nil && p.i.getVal(x.getSize()) < x.getVal(p.i.getSize()) {
 			p = p.r
 			continue
 		}
-		if p.l != nil && x.k < p.i.k {
+		if p.l != nil && x.getVal(p.i.getSize()) < p.i.getVal(x.getSize()) {
 			p = p.l
 			continue
 		}
@@ -182,38 +173,75 @@ func (t *Treap) find(x Item) (*Node, bool) {
 	return p, p.i == x
 }
 
-// insert inserts the given item into the treap
 func (t *Treap) insert(x Item) {
 	if t._root != nil && t.count(x) != 0 {
 		return
 	}
-	var l, r = _split(t._root, x.k)
+	var l, r = _split(t._root, x, _less_equal)
 	t._root = _merge(l, _merge(newNode(x), r))
 	t._updBegin()
 	t._updEnd()
 }
 
-// erase removes the given item from the treap
 func (t *Treap) erase(x Item) {
 	if t._root == nil || t.count(x) == 0 {
 		return
 	}
-	var l, r = _split(t._root, x.k)
-	l, _ = _split(l, x.k-1)
+	var l, r = _split(t._root, x, _less_equal)
+	l, _ = _split(l, x, _less)
 	t._root = _merge(l, r)
 	t._updBegin()
 	t._updEnd()
 }
 
-// print prints the treap in order
 func (t *Treap) print() {
 	_print(t._root)
+}
+
+type ItemInt struct {
+	k int
+}
+
+func (i ItemInt) getSize() int {
+	return len(strconv.Itoa(i.k))
+}
+
+func (i ItemInt) getVal(n int) string {
+	var val = strconv.Itoa(i.k)
+	for len(val) < n {
+		val = "0" + val
+	}
+	return val
+}
+
+func newItemInt(x int) Item {
+	var tmp ItemInt
+	tmp.k = x
+	return tmp
+}
+
+type ItemString struct {
+	k string
+}
+
+func (i ItemString) getSize() int {
+	return len(i.k)
+}
+
+func (i ItemString) getVal(n int) string {
+	return i.k
+}
+
+func newItemString(x string) Item {
+	var tmp ItemString
+	tmp.k = x
+	return tmp
 }
 
 func main() {
 	var t Treap
 	for i := 0; i < 10; i++ {
-		t.insert(newItem(rand.Int() % 100))
+		t.insert(newItemInt(rand.Int() % 100))
 	}
 	t.print()
 }
