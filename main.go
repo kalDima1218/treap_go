@@ -140,11 +140,11 @@ func (t *Treap) end() *Node {
 func (t *Treap) count(x Item) int {
 	var p = t._root
 	for p.i != x {
-		if p.r != nil && p.i.getVal(x.getSize()) < x.getVal(p.i.getSize()) {
+		if p.r != nil && _less(p.i, x) {
 			p = p.r
 			continue
 		}
-		if p.l != nil && x.getVal(p.i.getSize()) < p.i.getVal(x.getSize()) {
+		if p.l != nil && _less(x, p.i) {
 			p = p.l
 			continue
 		}
@@ -160,11 +160,11 @@ func (t *Treap) count(x Item) int {
 func (t *Treap) find(x Item) (*Node, bool) {
 	var p = t._root
 	for p.i != x {
-		if p.r != nil && p.i.getVal(x.getSize()) < x.getVal(p.i.getSize()) {
+		if p.r != nil && _less(p.i, x) {
 			p = p.r
 			continue
 		}
-		if p.l != nil && x.getVal(p.i.getSize()) < p.i.getVal(x.getSize()) {
+		if p.l != nil && _less(x, p.i) {
 			p = p.l
 			continue
 		}
@@ -243,5 +243,7 @@ func main() {
 	for i := 0; i < 10; i++ {
 		t.insert(newItemInt(rand.Int() % 100))
 	}
+	t.insert(newItemString("b"))
+	t.insert(newItemString("ab"))
 	t.print()
 }
